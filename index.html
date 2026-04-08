@@ -269,6 +269,59 @@
       background: linear-gradient(to right, #3498db, #2ecc71, #f39c12, #e74c3c);
     }
 
+    /* ── Photo upload ── */
+    .photo-drop {
+      border: 2px dashed var(--border); border-radius: 10px;
+      padding: 20px; text-align: center; cursor: pointer;
+      background: #f5fafd; transition: border-color .2s, background .2s;
+      position: relative;
+    }
+    .photo-drop:hover, .photo-drop.drag-over {
+      border-color: var(--surface); background: #eaf5fb;
+    }
+    .photo-drop input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .photo-drop-icon  { font-size: 2rem; line-height: 1; margin-bottom: 6px; }
+    .photo-drop-text  { font-size: .82rem; color: var(--muted); }
+    .photo-drop-text strong { color: var(--water); }
+
+    .photo-preview-wrap {
+      display: none; position: relative; margin-top: 10px;
+      border-radius: 10px; overflow: hidden; max-height: 160px;
+    }
+    .photo-preview-wrap.show { display: block; }
+    .photo-preview-wrap img  { width: 100%; max-height: 160px; object-fit: cover; display: block; }
+    .photo-remove {
+      position: absolute; top: 6px; right: 6px;
+      background: rgba(0,0,0,.55); color: white; border: none;
+      border-radius: 50%; width: 26px; height: 26px; font-size: .8rem;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+    }
+    .photo-remove:hover { background: var(--danger); }
+
+    /* Catch card photo */
+    .catch-photo {
+      width: 100%; max-height: 220px; object-fit: cover;
+      display: block; cursor: zoom-in;
+      border-top: 1px solid #f0f0f0;
+    }
+
+    /* Lightbox */
+    #lightbox {
+      display: none; position: fixed; inset: 0; z-index: 10000;
+      background: rgba(0,0,0,.88); align-items: center; justify-content: center;
+    }
+    #lightbox.open { display: flex; }
+    #lightbox img  { max-width: 92vw; max-height: 88vh; border-radius: 8px; box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+    #lightbox-close {
+      position: absolute; top: 18px; right: 22px;
+      background: rgba(255,255,255,.15); border: none; color: white;
+      font-size: 1.6rem; cursor: pointer; border-radius: 50%;
+      width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+    }
+    #lightbox-close:hover { background: rgba(255,255,255,.3); }
+
     /* ── GPS loading spinner ── */
     @keyframes spin { to { transform: rotate(360deg); } }
     .spin { display: inline-block; animation: spin .8s linear infinite; }
@@ -464,6 +517,19 @@
           <textarea id="notes" placeholder="Water conditions, weather, time of day…"></textarea>
         </div>
 
+        <div class="form-group">
+          <label>Photo of Catch</label>
+          <div class="photo-drop" id="photo-drop">
+            <input type="file" id="photo-input" accept="image/*" capture="environment" />
+            <div class="photo-drop-icon">📷</div>
+            <div class="photo-drop-text"><strong>Click to upload</strong> or drag &amp; drop<br/>JPG, PNG, HEIC — resized automatically</div>
+          </div>
+          <div class="photo-preview-wrap" id="photo-preview-wrap">
+            <img id="photo-preview" src="" alt="Catch photo preview" />
+            <button type="button" class="photo-remove" id="photo-remove" title="Remove photo">✕</button>
+          </div>
+        </div>
+
         <button type="submit" class="btn btn-primary">🎣 Log This Catch</button>
       </form>
     </div>
@@ -536,9 +602,88 @@
 
 <div id="toast">✅ Catch logged!</div>
 
+<!-- Lightbox -->
+<div id="lightbox">
+  <button id="lightbox-close">✕</button>
+  <img id="lightbox-img" src="" alt="Catch photo" />
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 <script>
+// ── Photo upload ─────────────────────────────────────────────────────
+let pendingPhoto = null; // base64 string for the current form entry
+
+function resizeImage(file, maxPx = 1000, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = ev => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+        const w = Math.round(img.width  * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function setPhotoPreview(dataUrl) {
+  pendingPhoto = dataUrl;
+  document.getElementById('photo-preview').src = dataUrl;
+  document.getElementById('photo-preview-wrap').classList.add('show');
+  document.getElementById('photo-drop').style.display = 'none';
+}
+
+function clearPhotoPreview() {
+  pendingPhoto = null;
+  document.getElementById('photo-preview').src = '';
+  document.getElementById('photo-preview-wrap').classList.remove('show');
+  document.getElementById('photo-drop').style.display = '';
+  document.getElementById('photo-input').value = '';
+}
+
+document.getElementById('photo-input').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try { setPhotoPreview(await resizeImage(file)); }
+  catch { alert('Could not load that image. Please try another file.'); }
+});
+
+document.getElementById('photo-remove').addEventListener('click', clearPhotoPreview);
+
+// Drag-and-drop
+const dropZone = document.getElementById('photo-drop');
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', async e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (!file || !file.type.startsWith('image/')) return;
+  try { setPhotoPreview(await resizeImage(file)); }
+  catch { alert('Could not load that image.'); }
+});
+
+// Lightbox
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+document.getElementById('lightbox-close').addEventListener('click', () =>
+  document.getElementById('lightbox').classList.remove('open'));
+document.getElementById('lightbox').addEventListener('click', e => {
+  if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+});
+
 // ── Storage ──────────────────────────────────────────────────────────
 const STORAGE_KEY = 'fishingLog_v1';
 function load() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch { return []; } }
@@ -736,6 +881,7 @@ document.getElementById('catch-form').addEventListener('submit', e => {
     notes:     document.getElementById('notes').value.trim() || null,
     lat:       lat ? parseFloat(lat) : null,
     lng:       lng ? parseFloat(lng) : null,
+    photo:     pendingPhoto || null,
   };
 
   catches.unshift(entry);
@@ -748,6 +894,9 @@ document.getElementById('catch-form').addEventListener('submit', e => {
   document.getElementById('catch-form').reset();
   document.getElementById('catch-date').valueAsDate = new Date();
   document.getElementById('state').value = keepState;
+
+  // Clear photo
+  clearPhotoPreview();
 
   // Clear picker
   if (pickerMarker && pickerMap) pickerMap.removeLayer(pickerMarker);
@@ -824,7 +973,8 @@ function renderLogMap() {
       if (c.weight) sizeParts.push(`${c.weight} lbs`);
 
       const popup = `
-        <div style="font-family:system-ui;min-width:180px;">
+        <div style="font-family:system-ui;min-width:190px;">
+          ${c.photo ? `<img src="${c.photo}" onclick="openLightbox(this.src)" style="width:100%;height:110px;object-fit:cover;border-radius:6px;margin-bottom:8px;cursor:zoom-in;display:block;" alt="${c.fish}" />` : ''}
           <div style="font-size:1rem;font-weight:700;color:#1e2d38;margin-bottom:6px;">${emoji} ${c.fish}</div>
           <div style="font-size:.8rem;color:#5a7080;margin-bottom:3px;">📍 ${c.location}, ${c.state}</div>
           <div style="font-size:.8rem;color:#5a7080;margin-bottom:3px;">🪱 ${c.bait}</div>
@@ -943,6 +1093,7 @@ function renderList() {
 
     return `
       <div class="catch-card" data-family="${family}" data-id="${c.id}">
+        ${c.photo ? `<img class="catch-photo" src="${c.photo}" alt="${c.fish} photo" onclick="openLightbox(this.src)" />` : ''}
         <div class="catch-card-inner">
           <div class="catch-fish-icon">${emoji}</div>
           <div class="catch-info">
