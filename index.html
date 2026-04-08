@@ -239,6 +239,36 @@
     }
     #toast.show { opacity: 1; transform: translateY(0); }
 
+    /* ── Map layer controls ── */
+    .map-controls {
+      display: flex; gap: 8px; padding: 10px 14px;
+      background: #f5fafd; border-bottom: 1px solid var(--border);
+      flex-wrap: wrap; align-items: center;
+    }
+    .map-controls-label {
+      font-size: .75rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .5px; color: var(--muted); margin-right: 2px;
+    }
+    .map-toggle {
+      padding: 5px 14px; border: 1.5px solid var(--border); border-radius: 20px;
+      font-size: .8rem; font-weight: 700; cursor: pointer;
+      background: white; color: var(--muted);
+      transition: all .15s; display: inline-flex; align-items: center; gap: 5px;
+    }
+    .map-toggle:hover  { border-color: var(--water); color: var(--water); }
+    .map-toggle.active { background: var(--water); color: white; border-color: var(--water); }
+
+    /* Heat legend */
+    .heat-legend {
+      display: none; align-items: center; gap: 6px;
+      margin-left: auto; font-size: .72rem; font-weight: 600; color: var(--muted);
+    }
+    .heat-legend.show { display: flex; }
+    .heat-bar {
+      width: 80px; height: 10px; border-radius: 5px;
+      background: linear-gradient(to right, #3498db, #2ecc71, #f39c12, #e74c3c);
+    }
+
     /* ── GPS loading spinner ── */
     @keyframes spin { to { transform: rotate(360deg); } }
     .spin { display: inline-block; animation: spin .8s linear infinite; }
@@ -466,6 +496,17 @@
 
       <!-- Map tab -->
       <div class="tab-panel active" id="tab-map">
+        <div class="map-controls">
+          <span class="map-controls-label">View:</span>
+          <button class="map-toggle active" data-layer="both">📍🔥 Pins + Heat</button>
+          <button class="map-toggle"        data-layer="pins">📍 Pins Only</button>
+          <button class="map-toggle"        data-layer="heat">🔥 Heat Map Only</button>
+          <div class="heat-legend show" id="heat-legend">
+            <span>Few</span>
+            <div class="heat-bar"></div>
+            <span>Many</span>
+          </div>
+        </div>
         <div id="log-map"></div>
       </div>
 
@@ -496,6 +537,7 @@
 <div id="toast">✅ Catch logged!</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 <script>
 // ── Storage ──────────────────────────────────────────────────────────
 const STORAGE_KEY = 'fishingLog_v1';
@@ -717,9 +759,24 @@ document.getElementById('catch-form').addEventListener('submit', e => {
 });
 
 // ── Log Map ──────────────────────────────────────────────────────────
-let logMap      = null;
+let logMap       = null;
 let logMapInited = false;
 let markerGroup  = null;
+let heatLayer    = null;
+let mapMode      = 'both'; // 'pins' | 'heat' | 'both'
+
+// Map layer toggle buttons
+document.querySelectorAll('.map-toggle').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.map-toggle').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    mapMode = btn.dataset.layer;
+    // Show/hide heat legend
+    const legend = document.getElementById('heat-legend');
+    legend.classList.toggle('show', mapMode !== 'pins');
+    renderLogMap();
+  });
+});
 
 function initLogMap() {
   if (logMapInited) return;
@@ -735,53 +792,77 @@ function initLogMap() {
 
 function renderLogMap() {
   if (!logMap) return;
+
+  // Clear pins
   markerGroup.clearLayers();
 
-  const withCoords = catches.filter(c => c.lat != null && c.lng != null);
+  // Clear heat layer
+  if (heatLayer) { logMap.removeLayer(heatLayer); heatLayer = null; }
 
+  const withCoords = catches.filter(c => c.lat != null && c.lng != null);
   if (!withCoords.length) return;
 
-  withCoords.forEach(c => {
-    const family = getFamily(c.fish);
-    const color  = FAMILY_COLORS[family] || '#999';
-    const emoji  = getFishEmoji(c.fish);
+  // ── Pins ──
+  if (mapMode === 'pins' || mapMode === 'both') {
+    withCoords.forEach(c => {
+      const family = getFamily(c.fish);
+      const color  = FAMILY_COLORS[family] || '#999';
+      const emoji  = getFishEmoji(c.fish);
 
-    const icon = L.divIcon({
-      html: `<div style="
-        width:32px;height:32px;border-radius:50%;
-        background:${color};border:3px solid white;
-        box-shadow:0 2px 6px rgba(0,0,0,.35);
-        display:flex;align-items:center;justify-content:center;
-        font-size:15px;cursor:pointer;">${emoji}</div>`,
-      className: '',
-      iconSize: [32, 32],
-      iconAnchor: [16, 16],
-      popupAnchor: [0, -18]
+      const icon = L.divIcon({
+        html: `<div style="
+          width:32px;height:32px;border-radius:50%;
+          background:${color};border:3px solid white;
+          box-shadow:0 2px 6px rgba(0,0,0,.35);
+          display:flex;align-items:center;justify-content:center;
+          font-size:15px;cursor:pointer;">${emoji}</div>`,
+        className: '', iconSize: [32,32], iconAnchor: [16,16], popupAnchor: [0,-18]
+      });
+
+      const sizeParts = [];
+      if (c.length) sizeParts.push(`${c.length}"`);
+      if (c.weight) sizeParts.push(`${c.weight} lbs`);
+
+      const popup = `
+        <div style="font-family:system-ui;min-width:180px;">
+          <div style="font-size:1rem;font-weight:700;color:#1e2d38;margin-bottom:6px;">${emoji} ${c.fish}</div>
+          <div style="font-size:.8rem;color:#5a7080;margin-bottom:3px;">📍 ${c.location}, ${c.state}</div>
+          <div style="font-size:.8rem;color:#5a7080;margin-bottom:3px;">🪱 ${c.bait}</div>
+          ${c.technique ? `<div style="font-size:.8rem;color:#5a7080;margin-bottom:3px;">🚣 ${c.technique}</div>` : ''}
+          <div style="font-size:.8rem;color:#5a7080;margin-bottom:3px;">📅 ${formatDate(c.date)}</div>
+          ${sizeParts.length ? `<div style="font-size:.8rem;color:#6c3ab5;">📏 ${sizeParts.join(' · ')}</div>` : ''}
+          ${c.notes ? `<div style="font-size:.75rem;color:#888;font-style:italic;margin-top:5px;border-top:1px solid #eee;padding-top:4px;">💬 ${c.notes}</div>` : ''}
+        </div>`;
+
+      L.marker([c.lat, c.lng], { icon }).addTo(markerGroup).bindPopup(popup);
+    });
+  }
+
+  // ── Heat Map ──
+  if (mapMode === 'heat' || mapMode === 'both') {
+    // Group catches into ~1 km grid cells so stacked catches get higher intensity
+    const cells = {};
+    withCoords.forEach(c => {
+      const key = `${c.lat.toFixed(2)},${c.lng.toFixed(2)}`;
+      cells[key] = (cells[key] || 0) + 1;
+    });
+    const maxCount = Math.max(...Object.values(cells));
+    const heatData = Object.entries(cells).map(([key, count]) => {
+      const [lat, lng] = key.split(',').map(Number);
+      return [lat, lng, count / maxCount]; // normalise 0–1
     });
 
-    const sizeParts = [];
-    if (c.length) sizeParts.push(`${c.length}"`);
-    if (c.weight) sizeParts.push(`${c.weight} lbs`);
-
-    const popup = `
-      <div style="font-family:system-ui;min-width:180px;">
-        <div style="font-size:1rem;font-weight:700;color:#1e2d38;margin-bottom:6px;">${emoji} ${c.fish}</div>
-        <div style="font-size:.8rem;color:#5a7080;margin-bottom:3px;">📍 ${c.location}, ${c.state}</div>
-        <div style="font-size:.8rem;color:#5a7080;margin-bottom:3px;">🪱 ${c.bait}</div>
-        ${c.technique ? `<div style="font-size:.8rem;color:#5a7080;margin-bottom:3px;">🚣 ${c.technique}</div>` : ''}
-        <div style="font-size:.8rem;color:#5a7080;margin-bottom:3px;">📅 ${formatDate(c.date)}</div>
-        ${sizeParts.length ? `<div style="font-size:.8rem;color:#6c3ab5;">📏 ${sizeParts.join(' · ')}</div>` : ''}
-        ${c.notes ? `<div style="font-size:.75rem;color:#888;font-style:italic;margin-top:5px;border-top:1px solid #eee;padding-top:4px;">💬 ${c.notes}</div>` : ''}
-      </div>`;
-
-    L.marker([c.lat, c.lng], { icon }).addTo(markerGroup).bindPopup(popup);
-  });
-
-  // Fit map to all markers
-  if (withCoords.length > 0) {
-    const bounds = L.latLngBounds(withCoords.map(c => [c.lat, c.lng]));
-    logMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 10 });
+    heatLayer = L.heatLayer(heatData, {
+      radius:     40,
+      blur:       30,
+      minOpacity: 0.35,
+      gradient:   { 0.2: '#3498db', 0.45: '#2ecc71', 0.7: '#f39c12', 1.0: '#e74c3c' }
+    }).addTo(logMap);
   }
+
+  // Fit bounds
+  const bounds = L.latLngBounds(withCoords.map(c => [c.lat, c.lng]));
+  logMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 10 });
 }
 
 // ── Tabs ─────────────────────────────────────────────────────────────
