@@ -144,7 +144,7 @@
     .clear-pin:hover { background: #fde8e8; }
 
     /* ── Stats ── */
-    .stats-bar { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 20px; }
+    .stats-bar { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 28px; grid-column: 1 / -1; }
     .stat { background: var(--card); border-radius: 12px; padding: 14px; text-align: center; box-shadow: 0 2px 10px rgba(0,0,0,.12); }
     .stat-num   { font-size: 1.8rem; font-weight: 800; color: var(--water); line-height: 1; }
     .stat-label { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-top: 4px; }
@@ -342,6 +342,22 @@
 
 <main>
 
+  <!-- ── Stats (full-width top row) ── -->
+  <div class="stats-bar">
+    <div class="stat">
+      <div class="stat-num" id="stat-total">0</div>
+      <div class="stat-label">Total Catches</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num" id="stat-species">0</div>
+      <div class="stat-label">Species Caught</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num" id="stat-states">0</div>
+      <div class="stat-label">States Fished</div>
+    </div>
+  </div>
+
   <!-- ── Log a Catch Form ── -->
   <div class="card" style="position:sticky;top:16px;">
     <div class="card-header">🐟 Log a Catch</div>
@@ -537,21 +553,6 @@
 
   <!-- ── Right Column ── -->
   <div>
-    <!-- Stats -->
-    <div class="stats-bar">
-      <div class="stat">
-        <div class="stat-num" id="stat-total">0</div>
-        <div class="stat-label">Total Catches</div>
-      </div>
-      <div class="stat">
-        <div class="stat-num" id="stat-species">0</div>
-        <div class="stat-label">Species Caught</div>
-      </div>
-      <div class="stat">
-        <div class="stat-num" id="stat-states">0</div>
-        <div class="stat-label">States Fished</div>
-      </div>
-    </div>
 
     <!-- Tabbed log -->
     <div class="card">
@@ -731,7 +732,7 @@ let pickerOpen   = false;
 
 function initPickerMap() {
   if (pickerMap) return;
-  pickerMap = L.map('picker-map', { zoomControl: true }).setView([39.5, -98.35], 4);
+  pickerMap = L.map('picker-map', { zoomControl: true, scrollWheelZoom: false }).setView([39.5, -98.35], 4);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
     maxZoom: 18
@@ -930,7 +931,7 @@ document.querySelectorAll('.map-toggle').forEach(btn => {
 function initLogMap() {
   if (logMapInited) return;
   logMapInited = true;
-  logMap = L.map('log-map').setView([39.5, -98.35], 4);
+  logMap = L.map('log-map', { scrollWheelZoom: false }).setView([39.5, -98.35], 4);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
     maxZoom: 18
