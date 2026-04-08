@@ -732,7 +732,7 @@ let pickerOpen   = false;
 
 function initPickerMap() {
   if (pickerMap) return;
-  pickerMap = L.map('picker-map', { zoomControl: true, scrollWheelZoom: false }).setView([39.5, -98.35], 4);
+  pickerMap = L.map('picker-map', { zoomControl: true }).setView([39.5, -98.35], 4);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
     maxZoom: 18
@@ -931,7 +931,7 @@ document.querySelectorAll('.map-toggle').forEach(btn => {
 function initLogMap() {
   if (logMapInited) return;
   logMapInited = true;
-  logMap = L.map('log-map', { scrollWheelZoom: false }).setView([39.5, -98.35], 4);
+  logMap = L.map('log-map').setView([39.5, -98.35], 4);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
     maxZoom: 18
