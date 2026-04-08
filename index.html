@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>American Fishing Log</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    :root {
+      --water:   #1a6b8a;
+      --deep:    #0d3d52;
+      --surface: #2899c0;
+      --sand:    #c8a96e;
+      --grass:   #3a7d44;
+      --light:   #e8f6fb;
+      --card:    #ffffff;
+      --text:    #1e2d38;
+      --muted:   #5a7080;
+      --border:  #cde3ed;
+      --danger:  #c0392b;
+      --accent:  #f39c12;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--deep);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, var(--deep) 0%, var(--water) 60%, var(--surface) 100%);
+      color: white;
+      position: relative;
+      overflow: hidden;
+    }
+    .header-wave {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      height: 40px; background: var(--deep);
+      clip-path: ellipse(55% 100% at 50% 100%);
+    }
+    .header-inner {
+      max-width: 1200px; margin: 0 auto;
+      padding: 32px 24px 52px;
+      display: flex; align-items: center; gap: 20px;
+    }
+    .header-icon { font-size: 52px; filter: drop-shadow(0 2px 4px rgba(0,0,0,.4)); }
+    .header-text h1 { font-size: 2.2rem; font-weight: 800; letter-spacing: -.5px; text-shadow: 0 2px 8px rgba(0,0,0,.3); }
+    .header-text p  { font-size: 1rem; opacity: .85; margin-top: 4px; }
+
+    /* ── Layout ── */
+    main {
+      max-width: 1200px; margin: 0 auto;
+      padding: 32px 16px 60px;
+      display: grid;
+      grid-template-columns: 400px 1fr;
+      gap: 28px;
+      align-items: start;
+    }
+    @media (max-width: 860px) {
+      main { grid-template-columns: 1fr; }
+      .header-text h1 { font-size: 1.6rem; }
+    }
+
+    /* ── Cards ── */
+    .card { background: var(--card); border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,.18); overflow: hidden; }
+    .card-header {
+      background: linear-gradient(90deg, var(--water), var(--surface));
+      color: white; padding: 14px 20px;
+      font-size: 1rem; font-weight: 700;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .card-body { padding: 20px; }
+
+    /* ── Form ── */
+    .form-group { margin-bottom: 14px; }
+    label {
+      display: block; font-size: .78rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .6px;
+      color: var(--muted); margin-bottom: 5px;
+    }
+    input, select, textarea {
+      width: 100%; padding: 10px 12px;
+      border: 1.5px solid var(--border); border-radius: 8px;
+      font-size: .93rem; color: var(--text); background: #f5fafd;
+      transition: border-color .2s, box-shadow .2s; font-family: inherit;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none; border-color: var(--surface);
+      box-shadow: 0 0 0 3px rgba(40,153,192,.18); background: white;
+    }
+    textarea { resize: vertical; min-height: 68px; }
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    .btn {
+      padding: 10px 16px; border: none; border-radius: 9px;
+      font-size: .9rem; font-weight: 700; cursor: pointer;
+      transition: transform .15s, box-shadow .15s;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .btn:hover  { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.18); }
+    .btn:active { transform: translateY(0); }
+    .btn-primary { background: linear-gradient(135deg, var(--water), var(--surface)); color: white; width: 100%; justify-content: center; font-size: 1rem; padding: 12px; margin-top: 4px; }
+    .btn-gps     { background: var(--grass); color: white; }
+    .btn-map     { background: #e8f4fb; color: var(--water); border: 1.5px solid var(--border); }
+    .btn-map.active { background: var(--water); color: white; border-color: var(--water); }
+    .btn-sm      { padding: 7px 12px; font-size: .82rem; }
+
+    /* ── Map Picker ── */
+    .map-picker-toolbar {
+      display: flex; gap: 8px; flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    #picker-map-wrap {
+      display: none;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 2px solid var(--border);
+      position: relative;
+    }
+    #picker-map-wrap.open { display: block; }
+    #picker-map { height: 220px; width: 100%; }
+
+    .map-hint {
+      position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+      background: rgba(255,255,255,.92); color: var(--deep);
+      font-size: .75rem; font-weight: 600; padding: 4px 10px;
+      border-radius: 20px; pointer-events: none;
+      box-shadow: 0 1px 6px rgba(0,0,0,.15); white-space: nowrap; z-index: 999;
+    }
+    .coords-display {
+      margin-top: 8px;
+      background: #f0f9ff; border: 1.5px solid var(--border);
+      border-radius: 8px; padding: 8px 12px;
+      font-size: .78rem; color: var(--muted);
+      display: none; align-items: center; gap: 8px;
+    }
+    .coords-display.show { display: flex; }
+    .coords-display span { color: var(--water); font-weight: 700; }
+    .clear-pin { background: none; border: none; color: var(--danger); cursor: pointer; font-size: .75rem; margin-left: auto; padding: 2px 4px; border-radius: 4px; }
+    .clear-pin:hover { background: #fde8e8; }
+
+    /* ── Stats ── */
+    .stats-bar { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 20px; }
+    .stat { background: var(--card); border-radius: 12px; padding: 14px; text-align: center; box-shadow: 0 2px 10px rgba(0,0,0,.12); }
+    .stat-num   { font-size: 1.8rem; font-weight: 800; color: var(--water); line-height: 1; }
+    .stat-label { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-top: 4px; }
+
+    /* ── Tabs ── */
+    .tabs { display: flex; border-bottom: 2px solid var(--border); }
+    .tab-btn {
+      flex: 1; padding: 12px; background: none; border: none;
+      font-size: .9rem; font-weight: 700; color: var(--muted);
+      cursor: pointer; transition: color .2s; display: flex; align-items: center; justify-content: center; gap: 6px;
+      border-bottom: 3px solid transparent; margin-bottom: -2px;
+    }
+    .tab-btn:hover  { color: var(--water); }
+    .tab-btn.active { color: var(--water); border-bottom-color: var(--water); }
+    .tab-panel      { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Log Map ── */
+    #log-map { height: 520px; width: 100%; }
+
+    /* ── Filter bar ── */
+    .filter-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+    .filter-bar input, .filter-bar select { flex: 1; min-width: 110px; font-size: .85rem; padding: 8px 10px; }
+
+    /* ── Catch list ── */
+    #catch-list { display: flex; flex-direction: column; gap: 12px; }
+    .catch-card {
+      background: var(--card); border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,.1);
+      border-left: 5px solid var(--water);
+      transition: transform .15s, box-shadow .15s;
+    }
+    .catch-card:hover { transform: translateX(3px); box-shadow: 0 4px 16px rgba(0,0,0,.15); }
+    .catch-card-inner {
+      padding: 12px 14px;
+      display: grid; grid-template-columns: auto 1fr auto;
+      gap: 10px; align-items: start;
+    }
+    .catch-fish-icon { font-size: 2rem; line-height: 1; }
+    .catch-info h3   { font-size: .97rem; font-weight: 700; color: var(--deep); margin-bottom: 3px; }
+    .catch-meta      { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: .7rem; font-weight: 600; padding: 3px 8px; border-radius: 20px;
+    }
+    .badge-location { background: #dff0f8; color: var(--water); }
+    .badge-bait     { background: #fef5e3; color: #a16b00; }
+    .badge-date     { background: #eef8ee; color: #2e6b3a; }
+    .badge-size     { background: #f3eaff; color: #6c3ab5; }
+    .badge-gps      { background: #fff0f0; color: #c0392b; cursor: pointer; }
+    .badge-gps:hover { background: #ffe0e0; }
+
+    .catch-actions { display: flex; gap: 6px; align-items: center; }
+    .btn-icon { background: none; border: none; cursor: pointer; font-size: 1rem; padding: 4px 6px; border-radius: 6px; transition: background .15s; }
+    .btn-icon:hover        { background: #f0f0f0; }
+    .btn-icon.delete:hover { background: #fde8e8; color: var(--danger); }
+
+    .catch-notes {
+      font-size: .8rem; color: var(--muted); font-style: italic;
+      padding: 0 14px 10px; border-top: 1px solid #f0f0f0; padding-top: 7px;
+    }
+
+    .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); }
+    .empty-state .empty-icon { font-size: 3.5rem; margin-bottom: 12px; }
+    .empty-state p { font-size: .93rem; }
+
+    /* Scrollable list */
+    .log-scroll { max-height: 480px; overflow-y: auto; padding-right: 2px; }
+    .log-scroll::-webkit-scrollbar { width: 5px; }
+    .log-scroll::-webkit-scrollbar-track { background: transparent; }
+    .log-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+
+    /* Fish family colors */
+    .catch-card[data-family="bass"]      { border-left-color: #2ecc71; }
+    .catch-card[data-family="trout"]     { border-left-color: #9b59b6; }
+    .catch-card[data-family="catfish"]   { border-left-color: #e67e22; }
+    .catch-card[data-family="panfish"]   { border-left-color: #f1c40f; }
+    .catch-card[data-family="pike"]      { border-left-color: #1abc9c; }
+    .catch-card[data-family="saltwater"] { border-left-color: #3498db; }
+    .catch-card[data-family="other"]     { border-left-color: #95a5a6; }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 24px; right: 24px;
+      background: var(--grass); color: white;
+      padding: 12px 20px; border-radius: 10px;
+      font-weight: 700; font-size: .9rem;
+      box-shadow: 0 4px 16px rgba(0,0,0,.25);
+      opacity: 0; transform: translateY(10px);
+      transition: opacity .3s, transform .3s;
+      pointer-events: none; z-index: 9999;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+
+    /* ── GPS loading spinner ── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin { display: inline-block; animation: spin .8s linear infinite; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="header-icon">🎣</div>
+    <div class="header-text">
+      <h1>American Fishing Log</h1>
+      <p>Track every catch &mdash; species, location, bait &amp; more</p>
+    </div>
+  </div>
+  <div class="header-wave"></div>
+</header>
+
+<main>
+
+  <!-- ── Log a Catch Form ── -->
+  <div class="card" style="position:sticky;top:16px;">
+    <div class="card-header">🐟 Log a Catch</div>
+    <div class="card-body">
+      <form id="catch-form" novalidate>
+
+        <div class="form-group">
+          <label for="fish-type">Fish Species *</label>
+          <select id="fish-type" required>
+            <option value="">— Select species —</option>
+            <optgroup label="Bass">
+              <option>Largemouth Bass</option><option>Smallmouth Bass</option>
+              <option>Striped Bass</option><option>White Bass</option><option>Spotted Bass</option>
+            </optgroup>
+            <optgroup label="Trout &amp; Salmon">
+              <option>Rainbow Trout</option><option>Brown Trout</option><option>Brook Trout</option>
+              <option>Lake Trout</option><option>Steelhead</option>
+              <option>Chinook Salmon</option><option>Coho Salmon</option>
+            </optgroup>
+            <optgroup label="Panfish">
+              <option>Bluegill</option><option>Crappie (Black)</option><option>Crappie (White)</option>
+              <option>Redear Sunfish</option><option>Pumpkinseed</option>
+              <option>Rock Bass</option><option>Yellow Perch</option>
+            </optgroup>
+            <optgroup label="Catfish">
+              <option>Channel Catfish</option><option>Flathead Catfish</option>
+              <option>Blue Catfish</option><option>Bullhead Catfish</option>
+            </optgroup>
+            <optgroup label="Pike &amp; Walleye">
+              <option>Walleye</option><option>Northern Pike</option>
+              <option>Muskellunge (Muskie)</option><option>Tiger Muskie</option><option>Sauger</option>
+            </optgroup>
+            <optgroup label="Saltwater">
+              <option>Red Drum (Redfish)</option><option>Flounder</option><option>Snook</option>
+              <option>Tarpon</option><option>Mahi-Mahi</option><option>Grouper</option>
+              <option>Snapper</option><option>Tuna (Bluefin)</option><option>Tuna (Yellowfin)</option>
+              <option>King Mackerel</option><option>Cobia</option>
+              <option>Speckled Trout</option><option>Sheepshead</option>
+            </optgroup>
+            <optgroup label="Other Freshwater">
+              <option>Carp (Common)</option><option>Carp (Grass)</option>
+              <option>Buffalo Fish</option><option>Drum (Freshwater)</option>
+              <option>Gar (Longnose)</option><option>Bowfin</option><option>Sturgeon</option>
+            </optgroup>
+            <option value="Other">Other (see notes)</option>
+          </select>
+        </div>
+
+        <div class="row-2">
+          <div class="form-group">
+            <label for="fish-length">Length (in)</label>
+            <input type="number" id="fish-length" placeholder="e.g. 18" min="0" step="0.5" />
+          </div>
+          <div class="form-group">
+            <label for="fish-weight">Weight (lbs)</label>
+            <input type="number" id="fish-weight" placeholder="e.g. 3.5" min="0" step="0.1" />
+          </div>
+        </div>
+
+        <!-- Location + Map Picker -->
+        <div class="form-group">
+          <label for="location">Location Name *</label>
+          <input type="text" id="location" placeholder="Lake, river, or water body…" required />
+        </div>
+
+        <div class="row-2">
+          <div class="form-group">
+            <label for="state">State *</label>
+            <select id="state" required>
+              <option value="">— State —</option>
+              <option>Alabama</option><option>Alaska</option><option>Arizona</option>
+              <option>Arkansas</option><option>California</option><option>Colorado</option>
+              <option>Connecticut</option><option>Delaware</option><option>Florida</option>
+              <option>Georgia</option><option>Hawaii</option><option>Idaho</option>
+              <option>Illinois</option><option>Indiana</option><option>Iowa</option>
+              <option>Kansas</option><option>Kentucky</option><option>Louisiana</option>
+              <option>Maine</option><option>Maryland</option><option>Massachusetts</option>
+              <option>Michigan</option><option>Minnesota</option><option>Mississippi</option>
+              <option>Missouri</option><option>Montana</option><option>Nebraska</option>
+              <option>Nevada</option><option>New Hampshire</option><option>New Jersey</option>
+              <option>New Mexico</option><option>New York</option><option>North Carolina</option>
+              <option>North Dakota</option><option>Ohio</option><option>Oklahoma</option>
+              <option>Oregon</option><option>Pennsylvania</option><option>Rhode Island</option>
+              <option>South Carolina</option><option>South Dakota</option><option>Tennessee</option>
+              <option>Texas</option><option>Utah</option><option>Vermont</option>
+              <option>Virginia</option><option>Washington</option><option>West Virginia</option>
+              <option>Wisconsin</option><option>Wyoming</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="catch-date">Date *</label>
+            <input type="date" id="catch-date" required />
+          </div>
+        </div>
+
+        <!-- Map picker -->
+        <div class="form-group">
+          <label>Pin Location on Map</label>
+          <div class="map-picker-toolbar">
+            <button type="button" class="btn btn-gps btn-sm" id="btn-gps">
+              📍 Use My Location
+            </button>
+            <button type="button" class="btn btn-map btn-sm" id="btn-toggle-map">
+              🗺️ Drop Pin on Map
+            </button>
+          </div>
+          <div id="picker-map-wrap">
+            <div class="map-hint" id="map-hint">Click anywhere to drop a pin</div>
+            <div id="picker-map"></div>
+          </div>
+          <div class="coords-display" id="coords-display">
+            📌 Pinned: <span id="coords-text">—</span>
+            <button type="button" class="clear-pin" id="clear-pin" title="Remove pin">✕ Clear</button>
+          </div>
+          <input type="hidden" id="pin-lat" />
+          <input type="hidden" id="pin-lng" />
+        </div>
+
+        <div class="form-group">
+          <label for="bait">Bait / Lure *</label>
+          <select id="bait" required>
+            <option value="">— Select bait/lure —</option>
+            <optgroup label="Live Bait">
+              <option>Live Worm / Nightcrawler</option><option>Live Minnow</option>
+              <option>Live Shad</option><option>Live Crawfish</option><option>Live Shrimp</option>
+              <option>Cut Bait (Fish)</option><option>Chicken Liver</option>
+              <option>Stink Bait / Dough Bait</option>
+            </optgroup>
+            <optgroup label="Soft Plastics">
+              <option>Plastic Worm</option><option>Swimbait (Soft)</option>
+              <option>Creature Bait</option><option>Tube Bait</option>
+              <option>Finesse Worm</option><option>Ned Rig</option><option>Drop Shot Bait</option>
+            </optgroup>
+            <optgroup label="Hard Lures">
+              <option>Crankbait (Shallow)</option><option>Crankbait (Deep Dive)</option>
+              <option>Jerkbait</option><option>Spinnerbait</option><option>Buzzbait</option>
+              <option>Topwater Popper</option><option>Topwater Frog</option>
+              <option>Lipless Crankbait</option><option>Swimbait (Hard)</option>
+            </optgroup>
+            <optgroup label="Jigs &amp; Rigs">
+              <option>Jig (Bass)</option><option>Jig (Flipping)</option>
+              <option>Marabou Jig</option><option>Football Jig</option>
+              <option>Carolina Rig</option><option>Texas Rig</option>
+              <option>Shaky Head Rig</option><option>Wacky Rig</option>
+            </optgroup>
+            <optgroup label="Fly Fishing">
+              <option>Dry Fly</option><option>Nymph</option><option>Streamer</option>
+              <option>Woolly Bugger</option><option>Elk Hair Caddis</option>
+            </optgroup>
+            <optgroup label="Methods">
+              <option>Trolling</option><option>Ice Fishing (Jig)</option>
+              <option>Bow Fishing</option><option>Cast Net</option><option>Trotline / Jugline</option>
+            </optgroup>
+            <option value="Other">Other (see notes)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="technique">Fishing Method</label>
+          <select id="technique">
+            <option value="">— Select method —</option>
+            <option>Bank Fishing</option><option>Boat Fishing</option>
+            <option>Kayak / Canoe</option><option>Wade Fishing</option>
+            <option>Pier / Dock</option><option>Surf Fishing</option>
+            <option>Fly Fishing</option><option>Ice Fishing</option>
+            <option>Trolling</option><option>Deep Sea / Offshore</option>
+            <option>Night Fishing</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="notes">Notes</label>
+          <textarea id="notes" placeholder="Water conditions, weather, time of day…"></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary">🎣 Log This Catch</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Right Column ── -->
+  <div>
+    <!-- Stats -->
+    <div class="stats-bar">
+      <div class="stat">
+        <div class="stat-num" id="stat-total">0</div>
+        <div class="stat-label">Total Catches</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num" id="stat-species">0</div>
+        <div class="stat-label">Species Caught</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num" id="stat-states">0</div>
+        <div class="stat-label">States Fished</div>
+      </div>
+    </div>
+
+    <!-- Tabbed log -->
+    <div class="card">
+      <div class="tabs" style="padding: 0 8px;">
+        <button class="tab-btn active" data-tab="map">🗺️ Map View</button>
+        <button class="tab-btn"        data-tab="list">📋 List View</button>
+      </div>
+
+      <!-- Map tab -->
+      <div class="tab-panel active" id="tab-map">
+        <div id="log-map"></div>
+      </div>
+
+      <!-- List tab -->
+      <div class="tab-panel" id="tab-list">
+        <div class="card-body" style="padding-bottom:8px;">
+          <div class="filter-bar">
+            <input type="search" id="filter-search" placeholder="🔍 Search species or location…" />
+            <select id="filter-state"><option value="">All States</option></select>
+            <select id="filter-species"><option value="">All Species</option></select>
+          </div>
+        </div>
+        <div class="card-body" style="padding-top:0;">
+          <div class="log-scroll">
+            <div id="catch-list">
+              <div class="empty-state">
+                <div class="empty-icon">🌊</div>
+                <p>No catches logged yet.<br/>Fill in the form to record your first fish!</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div id="toast">✅ Catch logged!</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ── Storage ──────────────────────────────────────────────────────────
+const STORAGE_KEY = 'fishingLog_v1';
+function load() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch { return []; } }
+function save(c) { localStorage.setItem(STORAGE_KEY, JSON.stringify(c)); }
+let catches = load();
+
+// ── Helpers ──────────────────────────────────────────────────────────
+function getFamily(fish) {
+  const f = fish.toLowerCase();
+  if (f.includes('bass'))                                                                    return 'bass';
+  if (f.includes('trout') || f.includes('salmon') || f.includes('steelhead'))              return 'trout';
+  if (f.includes('catfish') || f.includes('bullhead'))                                     return 'catfish';
+  if (['bluegill','crappie','perch','sunfish','pumpkinseed','rock bass'].some(x=>f.includes(x))) return 'panfish';
+  if (f.includes('walleye')||f.includes('pike')||f.includes('muskie')||f.includes('sauger')) return 'pike';
+  if (['flounder','snook','tarpon','mahi','grouper','snapper','tuna','mackerel','cobia','redfish','speckled','sheepshead','red drum'].some(x=>f.includes(x))) return 'saltwater';
+  return 'other';
+}
+
+const FAMILY_COLORS = {
+  bass:'#2ecc71', trout:'#9b59b6', catfish:'#e67e22',
+  panfish:'#f1c40f', pike:'#1abc9c', saltwater:'#3498db', other:'#95a5a6'
+};
+
+function getFishEmoji(fish) {
+  const f = fish.toLowerCase();
+  if (f.includes('bass'))   return '🐟';
+  if (f.includes('trout') || f.includes('salmon')) return '🐡';
+  if (f.includes('catfish')) return '🐠';
+  if (f.includes('tuna') || f.includes('mahi') || f.includes('tarpon')) return '🐟';
+  if (f.includes('pike') || f.includes('muskie') || f.includes('gar')) return '🦈';
+  return '🐟';
+}
+
+function formatDate(str) {
+  if (!str) return '';
+  const [y,m,d] = str.split('-');
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${months[+m-1]} ${+d}, ${y}`;
+}
+
+// ── Picker Map ───────────────────────────────────────────────────────
+let pickerMap    = null;
+let pickerMarker = null;
+let pickerOpen   = false;
+
+function initPickerMap() {
+  if (pickerMap) return;
+  pickerMap = L.map('picker-map', { zoomControl: true }).setView([39.5, -98.35], 4);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
+    maxZoom: 18
+  }).addTo(pickerMap);
+  pickerMap.on('click', e => {
+    placePickerPin(e.latlng.lat, e.latlng.lng);
+  });
+}
+
+function openPickerMap() {
+  const wrap = document.getElementById('picker-map-wrap');
+  const btn  = document.getElementById('btn-toggle-map');
+  pickerOpen = true;
+  wrap.classList.add('open');
+  btn.classList.add('active');
+  btn.innerHTML = '🗺️ Hide Map';
+  initPickerMap();
+  setTimeout(() => pickerMap.invalidateSize(), 100);
+}
+
+function closePickerMap() {
+  const wrap = document.getElementById('picker-map-wrap');
+  const btn  = document.getElementById('btn-toggle-map');
+  pickerOpen = false;
+  wrap.classList.remove('open');
+  btn.classList.remove('active');
+  btn.innerHTML = '🗺️ Drop Pin on Map';
+}
+
+document.getElementById('btn-toggle-map').addEventListener('click', () => {
+  pickerOpen ? closePickerMap() : openPickerMap();
+});
+
+function placePickerPin(lat, lng, autoFill = true) {
+  if (!pickerMap) { openPickerMap(); setTimeout(() => placePickerPin(lat, lng, autoFill), 300); return; }
+  if (!pickerOpen) openPickerMap();
+
+  if (pickerMarker) pickerMap.removeLayer(pickerMarker);
+  pickerMarker = L.marker([lat, lng]).addTo(pickerMap);
+  pickerMap.setView([lat, lng], Math.max(pickerMap.getZoom(), 10));
+
+  document.getElementById('pin-lat').value = lat.toFixed(6);
+  document.getElementById('pin-lng').value = lng.toFixed(6);
+  document.getElementById('coords-text').textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  document.getElementById('coords-display').classList.add('show');
+  document.getElementById('map-hint').style.display = 'none';
+
+  if (autoFill) reverseGeocode(lat, lng);
+}
+
+document.getElementById('clear-pin').addEventListener('click', () => {
+  if (pickerMarker && pickerMap) pickerMap.removeLayer(pickerMarker);
+  pickerMarker = null;
+  document.getElementById('pin-lat').value = '';
+  document.getElementById('pin-lng').value = '';
+  document.getElementById('coords-display').classList.remove('show');
+  document.getElementById('map-hint').style.display = '';
+});
+
+// ── GPS ──────────────────────────────────────────────────────────────
+document.getElementById('btn-gps').addEventListener('click', () => {
+  const btn = document.getElementById('btn-gps');
+  if (!navigator.geolocation) { alert('Geolocation is not supported by your browser.'); return; }
+  btn.innerHTML = '<span class="spin">⏳</span> Locating…';
+  btn.disabled = true;
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      btn.innerHTML = '📍 Use My Location';
+      btn.disabled = false;
+      placePickerPin(pos.coords.latitude, pos.coords.longitude);
+    },
+    err => {
+      btn.innerHTML = '📍 Use My Location';
+      btn.disabled = false;
+      const msgs = {1:'Location access denied.', 2:'Location unavailable.', 3:'Request timed out.'};
+      alert('Could not get location: ' + (msgs[err.code] || err.message));
+    },
+    { timeout: 10000, enableHighAccuracy: true }
+  );
+});
+
+// ── Reverse Geocode (Nominatim) ──────────────────────────────────────
+async function reverseGeocode(lat, lng) {
+  try {
+    const r = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
+      { headers: { 'Accept-Language': 'en' } }
+    );
+    const d = await r.json();
+    const addr = d.address || {};
+
+    // Fill location name if empty
+    const locField = document.getElementById('location');
+    if (!locField.value) {
+      const name = addr.lake || addr.reservoir || addr.river || addr.bay ||
+                   addr.water || addr.natural || addr.park ||
+                   addr.county || addr.city || addr.town || addr.village || '';
+      if (name) locField.value = name;
+    }
+
+    // Auto-select state
+    const stateField = document.getElementById('state');
+    if (!stateField.value && addr.state) {
+      for (const opt of stateField.options) {
+        if (opt.text === addr.state || opt.value === addr.state) {
+          stateField.value = opt.value;
+          break;
+        }
+      }
+    }
+  } catch (_) { /* Fail silently — not critical */ }
+}
+
+// ── Form submit ──────────────────────────────────────────────────────
+document.getElementById('catch-date').valueAsDate = new Date();
+
+document.getElementById('catch-form').addEventListener('submit', e => {
+  e.preventDefault();
+  const fish     = document.getElementById('fish-type').value;
+  const location = document.getElementById('location').value.trim();
+  const state    = document.getElementById('state').value;
+  const bait     = document.getElementById('bait').value;
+
+  if (!fish || !location || !state || !bait) {
+    const missing = [];
+    if (!fish)     missing.push('Fish Species');
+    if (!location) missing.push('Location');
+    if (!state)    missing.push('State');
+    if (!bait)     missing.push('Bait/Lure');
+    alert('Please fill in: ' + missing.join(', '));
+    return;
+  }
+
+  const lat = document.getElementById('pin-lat').value;
+  const lng = document.getElementById('pin-lng').value;
+
+  const entry = {
+    id:        Date.now(),
+    fish,
+    length:    document.getElementById('fish-length').value || null,
+    weight:    document.getElementById('fish-weight').value || null,
+    location,
+    state,
+    date:      document.getElementById('catch-date').value,
+    bait,
+    technique: document.getElementById('technique').value || null,
+    notes:     document.getElementById('notes').value.trim() || null,
+    lat:       lat ? parseFloat(lat) : null,
+    lng:       lng ? parseFloat(lng) : null,
+  };
+
+  catches.unshift(entry);
+  save(catches);
+  renderAll();
+  showToast();
+
+  // Reset, preserve state & date
+  const keepState = state;
+  document.getElementById('catch-form').reset();
+  document.getElementById('catch-date').valueAsDate = new Date();
+  document.getElementById('state').value = keepState;
+
+  // Clear picker
+  if (pickerMarker && pickerMap) pickerMap.removeLayer(pickerMarker);
+  pickerMarker = null;
+  document.getElementById('pin-lat').value = '';
+  document.getElementById('pin-lng').value = '';
+  document.getElementById('coords-display').classList.remove('show');
+  document.getElementById('map-hint').style.display = '';
+});
+
+// ── Log Map ──────────────────────────────────────────────────────────
+let logMap      = null;
+let logMapInited = false;
+let markerGroup  = null;
+
+function initLogMap() {
+  if (logMapInited) return;
+  logMapInited = true;
+  logMap = L.map('log-map').setView([39.5, -98.35], 4);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
+    maxZoom: 18
+  }).addTo(logMap);
+  markerGroup = L.layerGroup().addTo(logMap);
+  renderLogMap();
+}
+
+function renderLogMap() {
+  if (!logMap) return;
+  markerGroup.clearLayers();
+
+  const withCoords = catches.filter(c => c.lat != null && c.lng != null);
+
+  if (!withCoords.length) return;
+
+  withCoords.forEach(c => {
+    const family = getFamily(c.fish);
+    const color  = FAMILY_COLORS[family] || '#999';
+    const emoji  = getFishEmoji(c.fish);
+
+    const icon = L.divIcon({
+      html: `<div style="
+        width:32px;height:32px;border-radius:50%;
+        background:${color};border:3px solid white;
+        box-shadow:0 2px 6px rgba(0,0,0,.35);
+        display:flex;align-items:center;justify-content:center;
+        font-size:15px;cursor:pointer;">${emoji}</div>`,
+      className: '',
+      iconSize: [32, 32],
+      iconAnchor: [16, 16],
+      popupAnchor: [0, -18]
+    });
+
+    const sizeParts = [];
+    if (c.length) sizeParts.push(`${c.length}"`);
+    if (c.weight) sizeParts.push(`${c.weight} lbs`);
+
+    const popup = `
+      <div style="font-family:system-ui;min-width:180px;">
+        <div style="font-size:1rem;font-weight:700;color:#1e2d38;margin-bottom:6px;">${emoji} ${c.fish}</div>
+        <div style="font-size:.8rem;color:#5a7080;margin-bottom:3px;">📍 ${c.location}, ${c.state}</div>
+        <div style="font-size:.8rem;color:#5a7080;margin-bottom:3px;">🪱 ${c.bait}</div>
+        ${c.technique ? `<div style="font-size:.8rem;color:#5a7080;margin-bottom:3px;">🚣 ${c.technique}</div>` : ''}
+        <div style="font-size:.8rem;color:#5a7080;margin-bottom:3px;">📅 ${formatDate(c.date)}</div>
+        ${sizeParts.length ? `<div style="font-size:.8rem;color:#6c3ab5;">📏 ${sizeParts.join(' · ')}</div>` : ''}
+        ${c.notes ? `<div style="font-size:.75rem;color:#888;font-style:italic;margin-top:5px;border-top:1px solid #eee;padding-top:4px;">💬 ${c.notes}</div>` : ''}
+      </div>`;
+
+    L.marker([c.lat, c.lng], { icon }).addTo(markerGroup).bindPopup(popup);
+  });
+
+  // Fit map to all markers
+  if (withCoords.length > 0) {
+    const bounds = L.latLngBounds(withCoords.map(c => [c.lat, c.lng]));
+    logMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 10 });
+  }
+}
+
+// ── Tabs ─────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+
+    if (btn.dataset.tab === 'map') {
+      if (!logMapInited) initLogMap();
+      else setTimeout(() => logMap.invalidateSize(), 50);
+    }
+  });
+});
+
+// ── Render ────────────────────────────────────────────────────────────
+function filteredCatches() {
+  const search   = document.getElementById('filter-search').value.toLowerCase();
+  const fState   = document.getElementById('filter-state').value;
+  const fSpecies = document.getElementById('filter-species').value;
+  return catches.filter(c => {
+    if (fState   && c.state !== fState)   return false;
+    if (fSpecies && c.fish  !== fSpecies) return false;
+    if (search) {
+      const hay = (c.fish + c.location + c.state + (c.notes||'') + (c.bait||'')).toLowerCase();
+      if (!hay.includes(search)) return false;
+    }
+    return true;
+  });
+}
+
+function renderAll() {
+  renderStats();
+  renderFilters();
+  renderList();
+  renderLogMap();
+}
+
+function renderStats() {
+  document.getElementById('stat-total').textContent   = catches.length;
+  document.getElementById('stat-species').textContent = new Set(catches.map(c=>c.fish)).size;
+  document.getElementById('stat-states').textContent  = new Set(catches.map(c=>c.state)).size;
+}
+
+function renderFilters() {
+  const stateSet   = [...new Set(catches.map(c=>c.state).filter(Boolean))].sort();
+  const speciesSet = [...new Set(catches.map(c=>c.fish).filter(Boolean))].sort();
+
+  const fs = document.getElementById('filter-state');
+  const cs = fs.value;
+  fs.innerHTML = '<option value="">All States</option>' +
+    stateSet.map(s=>`<option${s===cs?' selected':''}>${s}</option>`).join('');
+
+  const fsp = document.getElementById('filter-species');
+  const csp = fsp.value;
+  fsp.innerHTML = '<option value="">All Species</option>' +
+    speciesSet.map(s=>`<option${s===csp?' selected':''}>${s}</option>`).join('');
+}
+
+function renderList() {
+  const list = document.getElementById('catch-list');
+  const data = filteredCatches();
+
+  if (!data.length) {
+    list.innerHTML = `<div class="empty-state"><div class="empty-icon">${catches.length?'🔍':'🌊'}</div>
+      <p>${catches.length?'No catches match your filter.':'No catches logged yet.<br/>Fill in the form to record your first fish!'}</p></div>`;
+    return;
+  }
+
+  list.innerHTML = data.map(c => {
+    const family   = getFamily(c.fish);
+    const emoji    = getFishEmoji(c.fish);
+    const sizeParts = [];
+    if (c.length) sizeParts.push(`${c.length}"`);
+    if (c.weight) sizeParts.push(`${c.weight} lbs`);
+
+    return `
+      <div class="catch-card" data-family="${family}" data-id="${c.id}">
+        <div class="catch-card-inner">
+          <div class="catch-fish-icon">${emoji}</div>
+          <div class="catch-info">
+            <h3>${c.fish}</h3>
+            <div class="catch-meta">
+              <span class="badge badge-location">📍 ${c.location}, ${c.state}</span>
+              <span class="badge badge-bait">🪱 ${c.bait}</span>
+              ${c.technique ? `<span class="badge badge-bait">🚣 ${c.technique}</span>` : ''}
+              <span class="badge badge-date">📅 ${formatDate(c.date)}</span>
+              ${sizeParts.length ? `<span class="badge badge-size">📏 ${sizeParts.join(' · ')}</span>` : ''}
+              ${c.lat != null ? `<span class="badge badge-gps" title="View on map" onclick="viewOnMap(${c.lat},${c.lng})">🗺️ Mapped</span>` : ''}
+            </div>
+          </div>
+          <div class="catch-actions">
+            <button class="btn-icon delete" title="Delete" onclick="deleteCatch(${c.id})">🗑️</button>
+          </div>
+        </div>
+        ${c.notes ? `<div class="catch-notes">💬 ${c.notes}</div>` : ''}
+      </div>`;
+  }).join('');
+}
+
+// ── View on map from list ─────────────────────────────────────────────
+function viewOnMap(lat, lng) {
+  document.querySelector('[data-tab="map"]').click();
+  setTimeout(() => {
+    logMap.setView([lat, lng], 13);
+  }, 100);
+}
+
+// ── Delete ────────────────────────────────────────────────────────────
+function deleteCatch(id) {
+  if (!confirm('Remove this catch from the log?')) return;
+  catches = catches.filter(c => c.id !== id);
+  save(catches);
+  renderAll();
+}
+
+// ── Filter listeners ──────────────────────────────────────────────────
+['filter-search','filter-state','filter-species'].forEach(id => {
+  document.getElementById(id).addEventListener('input', renderList);
+});
+
+// ── Toast ─────────────────────────────────────────────────────────────
+function showToast() {
+  const t = document.getElementById('toast');
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ── Init ──────────────────────────────────────────────────────────────
+// Init log map right away (it's visible by default)
+initLogMap();
+renderAll();
+</script>
+</body>
+</html>
